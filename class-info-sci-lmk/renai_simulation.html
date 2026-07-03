@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>恋ごころをベイズ更新する</title>
+<style>
+  :root{
+    --paper:#f6f1e7;
+    --paper-edge:#ece3d2;
+    --ink:#3a3226;
+    --ink-soft:#6b6051;
+    --rose:#c2566a;
+    --rose-soft:#e7a9b4;
+    --blue:#5a7a8c;
+    --rule:#d8ccb6;
+    --gold:#b08a3e;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(circle at 20% 0%, #fbf7ef 0%, var(--paper) 55%, var(--paper-edge) 100%);
+    color:var(--ink);
+    font-family:"Hiragino Mincho ProN","Yu Mincho",serif;
+    min-height:100vh;
+    padding:clamp(16px,3vw,40px);
+    line-height:1.7;
+  }
+  .sheet{
+    max-width:1080px;margin:0 auto;
+    background:var(--paper);
+    border:1px solid var(--rule);
+    box-shadow:0 1px 0 #fff inset, 0 18px 40px -28px rgba(58,50,38,.5);
+    border-radius:3px;
+    padding:clamp(20px,3.2vw,46px);
+    position:relative;
+  }
+  header{margin-bottom:26px;}
+  .eyebrow{
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    font-size:.72rem;letter-spacing:.32em;color:var(--gold);
+    text-transform:uppercase;margin:0 0 6px;
+  }
+  h1{
+    font-size:clamp(1.7rem,4vw,2.6rem);margin:0;font-weight:600;
+    letter-spacing:.02em;
+  }
+  h1 .sub{display:block;font-size:.92rem;color:var(--ink-soft);
+    letter-spacing:.04em;margin-top:8px;font-weight:400;}
+  .layout{display:grid;grid-template-columns:1fr 1.15fr;gap:clamp(20px,3vw,40px);margin-top:18px;}
+  @media(max-width:780px){.layout{grid-template-columns:1fr;}}
+
+  .panel{}
+  .panel h2{
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    font-size:.8rem;letter-spacing:.18em;color:var(--ink-soft);
+    border-bottom:1px solid var(--rule);padding-bottom:6px;margin:0 0 16px;
+    font-weight:600;
+  }
+  .field{margin-bottom:18px;}
+  .field label{
+    display:flex;justify-content:space-between;align-items:baseline;
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    font-size:.82rem;margin-bottom:4px;color:var(--ink);
+  }
+  .field .val{font-variant-numeric:tabular-nums;color:var(--rose);font-weight:600;}
+  .hint{font-size:.7rem;color:var(--ink-soft);margin:2px 0 0;
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;}
+  input[type=range]{
+    width:100%;appearance:none;height:3px;border-radius:3px;
+    background:var(--rule);outline:none;margin:8px 0 2px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    appearance:none;width:18px;height:18px;border-radius:50%;
+    background:var(--paper);border:2px solid var(--rose);cursor:pointer;
+    box-shadow:0 2px 6px -1px rgba(194,86,106,.5);transition:transform .1s;
+  }
+  input[type=range]::-webkit-slider-thumb:active{transform:scale(1.2);}
+  input[type=range]::-moz-range-thumb{
+    width:18px;height:18px;border-radius:50%;
+    background:var(--paper);border:2px solid var(--rose);cursor:pointer;
+  }
+
+  .signs{display:flex;gap:10px;margin:10px 0 4px;}
+  .btn{
+    flex:1;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    font-size:.92rem;padding:13px 8px;border-radius:4px;cursor:pointer;
+    border:1px solid var(--rule);background:#fff;color:var(--ink);
+    transition:transform .08s, box-shadow .15s, background .15s;
+    box-shadow:0 2px 0 var(--paper-edge);
+  }
+  .btn:hover{transform:translateY(-1px);}
+  .btn:active{transform:translateY(1px);box-shadow:0 0 0 var(--paper-edge);}
+  .btn .count{display:block;font-size:1.25rem;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;}
+  .btn-pos{border-color:var(--rose-soft);} .btn-pos .count{color:var(--rose);}
+  .btn-pos:hover{background:#fdf3f5;}
+  .btn-neg{border-color:#c8d2d8;} .btn-neg .count{color:var(--blue);}
+  .btn-neg:hover{background:#f1f5f7;}
+  .btn-reset{
+    width:100%;margin-top:8px;background:transparent;border:1px dashed var(--rule);
+    color:var(--ink-soft);font-size:.78rem;padding:9px;
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;border-radius:4px;cursor:pointer;
+  }
+  .btn-reset:hover{color:var(--rose);border-color:var(--rose-soft);}
+
+  .history{
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    font-size:.72rem;color:var(--ink-soft);margin-top:10px;min-height:1.4em;
+    word-break:break-all;letter-spacing:.05em;
+  }
+  .history .h-pos{color:var(--rose);} .history .h-neg{color:var(--blue);}
+
+  .figure{position:relative;}
+  .stat-row{
+    display:flex;gap:14px;margin-bottom:12px;flex-wrap:wrap;
+  }
+  .stat{
+    flex:1;min-width:120px;background:#fff;border:1px solid var(--rule);
+    border-radius:4px;padding:10px 12px;
+  }
+  .stat .k{font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    font-size:.68rem;color:var(--ink-soft);letter-spacing:.1em;}
+  .stat .v{font-size:1.5rem;font-weight:700;color:var(--ink);
+    font-variant-numeric:tabular-nums;margin-top:2px;}
+  .stat .v small{font-size:.8rem;font-weight:400;color:var(--ink-soft);}
+  .stat-ci .v{color:var(--blue);font-size:1.15rem;}
+
+  svg{width:100%;height:auto;display:block;background:#fff;
+    border:1px solid var(--rule);border-radius:4px;}
+  .caption{font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    font-size:.7rem;color:var(--ink-soft);margin-top:8px;text-align:center;}
+  .note{
+    margin-top:22px;border-top:1px solid var(--rule);padding-top:14px;
+    font-size:.74rem;color:var(--ink-soft);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;line-height:1.6;
+  }
+  .note b{color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="sheet">
+  <header>
+    <!-- <p class="eyebrow">Bayesian Updating</p> -->
+    <h1>恋ごころをベイズ更新する
+      <span class="sub">「付き合える確率」への信念を、デートのサインで更新してみる</span>
+    </h1>
+  </header>
+
+  <div class="layout">
+    <!-- 左：操作 -->
+    <section class="panel">
+      <h2>① 最初の信念（事前分布）</h2>
+      <div class="field">
+        <label>ポジティブ側の重み α<span class="val" id="aVal">2.0</span></label>
+        <input type="range" id="aSlider" min="0.5" max="20" step="0.5" value="2">
+        <p class="hint">大きいほど「最初から脈ありだと思っている」</p>
+      </div>
+      <div class="field">
+        <label>ネガティブ側の重み β<span class="val" id="bVal">2.0</span></label>
+        <input type="range" id="bSlider" min="0.5" max="20" step="0.5" value="2">
+        <p class="hint">大きいほど「最初から脈なしだと思っている」</p>
+      </div>
+
+      <h2 style="margin-top:26px;">② ポジティブなサイン1回の効果</h2>
+      <div class="field">
+        <label>更新の強さ<span class="val" id="wVal">5.0</span></label>
+        <input type="range" id="wSlider" min="0.5" max="10" step="0.5" value="5">
+        <p class="hint">ボタン1回で α か β にこの値を足す。大きいほど一度の出来事で信念が大きく動く</p>
+      </div>
+
+      <h2 style="margin-top:26px;">③ デートのサインを観測する</h2>
+      <div class="signs">
+        <button class="btn btn-pos" id="posBtn">ポジティブなサイン
+          <span class="count" id="posCount">0</span></button>
+        <button class="btn btn-neg" id="negBtn">ネガティブなサイン
+          <span class="count" id="negCount">0</span></button>
+      </div>
+      <button class="btn-reset" id="resetBtn">リセット</button>
+      <div class="history" id="history">まだ何も観測していない</div>
+
+      <h2 style="margin-top:26px;">④ 区間の幅</h2>
+      <div class="field">
+        <label>信用区間<span class="val" id="ciVal">90%</span></label>
+        <input type="range" id="ciSlider" min="50" max="99" step="1" value="90">
+        <p class="hint">「この範囲に入っていると◯%信じる」という幅</p>
+      </div>
+    </section>
+
+    <!-- 右：結果 -->
+    <section class="panel figure">
+      <h2>① 事前分布 ― α・βで決まる「最初の信念」</h2>
+      <svg id="priorPlot" viewBox="0 0 520 300" preserveAspectRatio="xMidYMid meet"></svg>
+      <p class="caption" id="priorTag">まだ観測前：事後＝事前</p>
+
+      <h2 style="margin-top:22px;">② 事後分布 ― サインで更新した信念</h2>
+      <div class="stat-row">
+        <div class="stat">
+          <div class="k">中央値</div>
+          <div class="v"><span id="medVal">50.0</span><small>%</small></div>
+        </div>
+        <div class="stat stat-ci">
+          <div class="k"><span id="ciLabel">90</span>% 信用区間</div>
+          <div class="v">[<span id="ciLo">13.5</span>, <span id="ciHi">86.5</span>]<small>%</small></div>
+        </div>
+      </div>
+      <svg id="plot" viewBox="0 0 520 300" preserveAspectRatio="xMidYMid meet"></svg>
+      <p class="caption">横軸：付き合える確率 p ／ 縦軸：その確率への信じやすさ（確率密度）</p>
+    </section>
+  </div>
+
+  <p class="note">
+    <b>仕組み：</b>「付き合える確率 p」がどれくらいか、を Beta(α, β) という分布で表す。
+    ポジティブなサインを観測すると α が、ネガティブなサインを観測すると β が増え、
+    山の位置と幅（＝確信の度合い）が動く。</p>
+</div>
+
+<script>
+function logGamma(z){
+  const g=[676.5203681218851,-1259.1392167224028,771.32342877765313,
+    -176.61502916214059,12.507343278686905,-0.13857109526572012,
+    9.9843695780195716e-6,1.5056327351493116e-7];
+  if(z<0.5) return Math.log(Math.PI/Math.sin(Math.PI*z))-logGamma(1-z);
+  z-=1; let x=0.99999999999980993;
+  for(let i=0;i<g.length;i++) x+=g[i]/(z+i+1);
+  const t=z+g.length-0.5;
+  return 0.5*Math.log(2*Math.PI)+(z+0.5)*Math.log(t)-t+Math.log(x);
+}
+function betacf(x,a,b){
+  const MAXIT=200,EPS=3e-12,FPMIN=1e-300;
+  let qab=a+b,qap=a+1,qam=a-1,c=1,d=1-qab*x/qap;
+  if(Math.abs(d)<FPMIN)d=FPMIN; d=1/d; let h=d;
+  for(let m=1;m<=MAXIT;m++){
+    let m2=2*m,aa=m*(b-m)*x/((qam+m2)*(a+m2));
+    d=1+aa*d;if(Math.abs(d)<FPMIN)d=FPMIN;
+    c=1+aa/c;if(Math.abs(c)<FPMIN)c=FPMIN;
+    d=1/d;h*=d*c;
+    aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2));
+    d=1+aa*d;if(Math.abs(d)<FPMIN)d=FPMIN;
+    c=1+aa/c;if(Math.abs(c)<FPMIN)c=FPMIN;
+    d=1/d;let del=d*c;h*=del;
+    if(Math.abs(del-1)<EPS)break;
+  }
+  return h;
+}
+function betai(x,a,b){
+  if(x<=0)return 0;if(x>=1)return 1;
+  let bt=Math.exp(logGamma(a+b)-logGamma(a)-logGamma(b)+a*Math.log(x)+b*Math.log(1-x));
+  return x<(a+1)/(a+b+2) ? bt*betacf(x,a,b)/a : 1-bt*betacf(1-x,b,a)/b;
+}
+function betainv(p,a,b){
+  let lo=0,hi=1;
+  for(let i=0;i<100;i++){let mid=(lo+hi)/2; if(betai(mid,a,b)<p)lo=mid;else hi=mid;}
+  return (lo+hi)/2;
+}
+function betaPdf(x,a,b){
+  if(x<=0||x>=1)return 0;
+  return Math.exp((a-1)*Math.log(x)+(b-1)*Math.log(1-x)-(logGamma(a)+logGamma(b)-logGamma(a+b)));
+}
+
+const S={a0:2,b0:2,w:5,nPos:0,nNeg:0,ci:90,hist:[]};
+const $=id=>document.getElementById(id);
+
+function alphaBeta(){
+  return [S.a0+S.w*S.nPos, S.b0+S.w*S.nNeg];
+}
+
+function curve(a,b,N){
+  let xs=[],ys=[],ymax=0;
+  for(let i=0;i<=N;i++){
+    let x=i/N, y=betaPdf(x,a,b);
+    if(!isFinite(y))y=0;
+    xs.push(x);ys.push(y);if(y>ymax)ymax=y;
+  }
+  return {xs,ys,ymax};
+}
+
+// opts.color, opts.fill(信用区間を塗るか), opts.ci(true/false)
+function render(svgId,a,b,yScale,opts){
+  const W=520,H=300,padL=44,padR=16,padT=22,padB=38;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const N=240;
+  const {xs,ys}=curve(a,b,N);
+  const sx=x=>padL+x*plotW;
+  const sy=y=>padT+plotH-(y/yScale)*plotH;
+
+  let ticks="";
+  for(let t=0;t<=100;t+=20){
+    let x=sx(t/100);
+    ticks+=`<line x1="${x}" y1="${padT+plotH}" x2="${x}" y2="${padT+plotH+5}" stroke="#d8ccb6"/>`;
+    ticks+=`<text x="${x}" y="${padT+plotH+19}" text-anchor="middle" font-size="11" fill="#6b6051" font-family="sans-serif">${t}%</text>`;
+  }
+
+  let band="";
+  let medMarker="";
+  if(opts.ci){
+    const lo=betainv((1-S.ci/100)/2,a,b);
+    const hi=betainv(1-(1-S.ci/100)/2,a,b);
+    const med=betainv(0.5,a,b);
+    for(let i=0;i<=N;i++){
+      if(xs[i]>=lo&&xs[i]<=hi){
+        band+=(band===""?`M ${sx(xs[i])} ${sy(0)} `:"")+`L ${sx(xs[i])} ${sy(ys[i])} `;
+      }
+    }
+    if(band!==""){
+      let lastX=xs.filter(x=>x<=hi).slice(-1)[0];
+      band+=`L ${sx(lastX)} ${sy(0)} Z`;
+    }
+    const medX=sx(med);
+    medMarker=`
+      <line x1="${medX}" y1="${padT}" x2="${medX}" y2="${padT+plotH}" stroke="#b08a3e" stroke-width="1.4" stroke-dasharray="4 3"/>
+      <text x="${medX}" y="${padT-7}" text-anchor="middle" font-size="11" fill="#b08a3e" font-family="sans-serif">中央値</text>`;
+  }
+
+  let area="M "+sx(0)+" "+sy(0)+" L "+xs.map((x,i)=>`${sx(x).toFixed(2)} ${sy(ys[i]).toFixed(2)}`).join(" L ")+` L ${sx(1)} ${sy(0)} Z`;
+  let path="M "+xs.map((x,i)=>`${sx(x).toFixed(2)} ${sy(ys[i]).toFixed(2)}`).join(" L ");
+
+  $(svgId).innerHTML=`
+    <line x1="${padL}" y1="${padT+plotH}" x2="${padL+plotW}" y2="${padT+plotH}" stroke="#c9bca4"/>
+    ${ticks}
+    ${opts.ci&&band?`<path d="${band}" fill="${opts.color}" opacity="0.16"/>`
+      :`<path d="${area}" fill="${opts.color}" opacity="0.08"/>`}
+    <path d="${path}" fill="none" stroke="${opts.color}" stroke-width="2.4"
+      stroke-linejoin="round" ${opts.dashed?'stroke-dasharray="6 4"':''}/>
+    ${medMarker}
+  `;
+}
+
+function draw(){
+  const [a,b]=alphaBeta();
+  // 事前・事後の縦軸は独立（各図を自分のピークで正規化）
+  const c0=curve(S.a0,S.b0,240);
+  const c1=curve(a,b,240);
+
+  render("priorPlot",S.a0,S.b0,Math.max(c0.ymax,1e-6),{color:"#5a7a8c",dashed:true,ci:false});
+  render("plot",a,b,Math.max(c1.ymax,1e-6),{color:"#c2566a",dashed:false,ci:true});
+
+  const lo=betainv((1-S.ci/100)/2,a,b);
+  const hi=betainv(1-(1-S.ci/100)/2,a,b);
+  const med=betainv(0.5,a,b);
+  $("medVal").textContent=(med*100).toFixed(1);
+  $("ciLo").textContent=(lo*100).toFixed(1);
+  $("ciHi").textContent=(hi*100).toFixed(1);
+  $("ciLabel").textContent=S.ci;
+
+  const updated=(S.nPos+S.nNeg)>0;
+  $("priorTag").textContent = updated ? "α₀="+S.a0.toFixed(1)+", β₀="+S.b0.toFixed(1)
+                                      : "まだ観測前：事後＝事前";
+}
+
+function renderControls(){
+  $("aVal").textContent=S.a0.toFixed(1);
+  $("bVal").textContent=S.b0.toFixed(1);
+  $("wVal").textContent=S.w.toFixed(1);
+  $("ciVal").textContent=S.ci+"%";
+  $("posCount").textContent=S.nPos;
+  $("negCount").textContent=S.nNeg;
+  if(S.hist.length===0){
+    $("history").textContent="まだ何も観測していない";
+  }else{
+    $("history").innerHTML="観測した順：" + S.hist.map(h=>
+      h==="+"?'<span class="h-pos">＋</span>':'<span class="h-neg">－</span>'
+    ).join("");
+  }
+}
+
+function refresh(){renderControls();draw();}
+
+$("aSlider").oninput=e=>{S.a0=+e.target.value;refresh();};
+$("bSlider").oninput=e=>{S.b0=+e.target.value;refresh();};
+$("wSlider").oninput=e=>{S.w=+e.target.value;refresh();};
+$("ciSlider").oninput=e=>{S.ci=+e.target.value;refresh();};
+$("posBtn").onclick=()=>{S.nPos++;S.hist.push("+");refresh();};
+$("negBtn").onclick=()=>{S.nNeg++;S.hist.push("-");refresh();};
+$("resetBtn").onclick=()=>{S.nPos=0;S.nNeg=0;S.hist=[];refresh();};
+
+refresh();
+</script>
+</body>
+</html>
