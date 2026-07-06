@@ -1,0 +1,8 @@
+# グルメナビ 練習用サイト robots.txt（プログラミング演習用のサンプル）
+# このファイルは授業で robots.txt の読み方を学ぶために用意した見本です。
+# 実在の店舗とは関係のない架空の練習用サイトです。
+
+User-agent: *
+Disallow: /admin/
+Disallow: /private/
+Allow: /
