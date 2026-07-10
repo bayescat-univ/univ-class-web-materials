@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手で合わせる線形回帰</title>
+<style>
+  :root{
+    --ink:#1a2332; --sub:#5a6b7f; --line:#d8dee6; --bg:#fff;
+    --panel:#f4f6f9; --data:#0096c8; --model:#ff6a2c; --resid:#9aa7b5;
+    --accent:#1f5fa8; --good:#2e9e5b;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;}
+  .wrap{max-width:960px;margin:0 auto;padding:24px 20px 48px;}
+  h1{font-size:1.5rem;margin:0 0 4px;}
+  .lead{color:var(--sub);margin:0 0 20px;font-size:.95rem;}
+  .board{display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start;}
+  @media(max-width:760px){.board{grid-template-columns:1fr;}}
+  .plotwrap{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px;}
+  svg{display:block;width:100%;height:auto;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;}
+  .param{margin-bottom:22px;}
+  .param .name{font-weight:700;font-size:1.05rem;display:block;margin-bottom:8px;}
+  .param .name small{font-weight:400;color:var(--sub);font-size:.8rem;}
+  .stepper{display:flex;align-items:center;gap:8px;}
+  .stepbtn{width:52px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:1.4rem;font-weight:700;padding:8px 0;border-radius:8px;cursor:pointer;user-select:none;transition:background .12s,border-color .12s;}
+  .stepbtn:hover{background:#eef2f7;border-color:var(--accent);}
+  .stepbtn:active{background:#e0e8f2;}
+  .numinput{flex:1;text-align:center;font-size:1.15rem;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;padding:9px 4px;border:1px solid var(--line);border-radius:8px;}
+  .metrics{border-top:1px solid var(--line);padding-top:16px;margin-top:4px;}
+  .metric{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;}
+  .metric .mlabel{color:var(--sub);font-size:.9rem;}
+  .metric .mval{font-variant-numeric:tabular-nums;font-size:1.4rem;font-weight:700;}
+  .actions{display:flex;gap:8px;margin-top:18px;}
+  .actions button{flex:1;border:none;padding:11px 0;border-radius:8px;font-size:.9rem;font-weight:700;cursor:pointer;color:#fff;}
+  .btn-data{background:var(--accent);} .btn-data:hover{background:#17508f;}
+  .btn-opt{background:var(--good);} .btn-opt:hover{background:#268a4e;}
+  .hint{margin-top:16px;font-size:.82rem;color:var(--sub);background:#eef2f7;border-radius:8px;padding:10px 12px;}
+  .legend{display:flex;gap:16px;margin:10px 2px 0;font-size:.82rem;color:var(--sub);flex-wrap:wrap;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .swatch{width:14px;height:3px;border-radius:2px;display:inline-block;}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>手で合わせる線形回帰</h1>
+
+  <div class="board">
+    <div>
+      <div class="plotwrap">
+        <svg id="plot" viewBox="0 0 500 400" aria-label="散布図と回帰直線"></svg>
+      </div>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--data)"></span>データ</span>
+        <span><span class="swatch" style="background:var(--model)"></span>モデル（予測の直線）</span>
+        <span><span class="swatch" style="background:var(--resid)"></span>誤差（ズレ）</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="param">
+        <span class="name">傾き b <small>xが1増えるとyがどれだけ変わるか</small></span>
+        <div class="stepper">
+          <button class="stepbtn" data-p="b" data-d="-1">−</button>
+          <input class="numinput" id="binput" type="number" step="0.1" value="0.0">
+          <button class="stepbtn" data-p="b" data-d="1">＋</button>
+        </div>
+      </div>
+
+      <div class="param">
+        <span class="name">切片 a <small>x=0 のときの y の値</small></span>
+        <div class="stepper">
+          <button class="stepbtn" data-p="a" data-d="-1">−</button>
+          <input class="numinput" id="ainput" type="number" step="0.1" value="0.0">
+          <button class="stepbtn" data-p="a" data-d="1">＋</button>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric"><span class="mlabel">MSE（平均二乗誤差）</span><span class="mval" id="mse">—</span></div>
+        <div class="metric"><span class="mlabel">RMSE（誤差の目安）</span><span class="mval" id="rmse">—</span></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-data" id="newdata">新しいデータ</button>
+        <button class="btn-opt" id="optimal">最適解を見る</button>
+      </div>
+
+      <div class="hint" id="hint">傾き b と切片 a を動かして直線を合わせよう．</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const svg=document.getElementById('plot');
+  const NS='http://www.w3.org/2000/svg';
+  const VW=500,VH=400,M={l:46,r:16,t:16,b:40};
+  const X0=0,X1=10,Y0=0,Y1=14;
+  const px=x=>M.l+(x-X0)/(X1-X0)*(VW-M.l-M.r);
+  const py=y=>VH-M.b-(y-Y0)/(Y1-Y0)*(VH-M.t-M.b);
+
+  let data=[], a=0, b=0;
+
+  function genData(){
+    // 相関0.7程度: 真の直線 y=x+2 に大きめノイズ
+    const trueB=1.0, trueA=2.0, noiseSD=4.0;
+    data=[];
+    for(let i=0;i<12;i++){
+      const x=Math.random()*8+1;
+      const noise=(Math.random()+Math.random()+Math.random()-1.5)*noiseSD;
+      let y=trueA+trueB*x+noise;
+      y=Math.max(Y0+0.4,Math.min(Y1-0.4,y));
+      data.push({x,y});
+    }
+    // 初期は固定のデタラメ値（水平線 y=0）
+    a=0; b=0;
+    syncInputs();
+  }
+
+  function ols(){
+    const n=data.length; let sx=0,sy=0,sxy=0,sxx=0;
+    for(const d of data){sx+=d.x;sy+=d.y;sxy+=d.x*d.y;sxx+=d.x*d.x;}
+    const bb=(n*sxy-sx*sy)/(n*sxx-sx*sx);
+    const aa=(sy-bb*sx)/n;
+    return {a:aa,b:bb};
+  }
+  function mse(){let s=0;for(const d of data){const e=(a+b*d.x)-d.y;s+=e*e;}return s/data.length;}
+
+  function line(x1,y1,x2,y2,stroke,w,dash){
+    const l=document.createElementNS(NS,'line');
+    l.setAttribute('x1',x1);l.setAttribute('y1',y1);l.setAttribute('x2',x2);l.setAttribute('y2',y2);
+    l.setAttribute('stroke',stroke);l.setAttribute('stroke-width',w);
+    if(dash)l.setAttribute('stroke-dasharray',dash);
+    svg.appendChild(l);
+  }
+  function text(x,y,str,anchor,size,fill){
+    const t=document.createElementNS(NS,'text');
+    t.setAttribute('x',x);t.setAttribute('y',y);
+    t.setAttribute('text-anchor',anchor||'middle');
+    t.setAttribute('font-size',size||12);t.setAttribute('fill',fill||'#5a6b7f');
+    t.textContent=str;svg.appendChild(t);
+  }
+
+  function draw(){
+    svg.innerHTML='';
+    for(let gx=0;gx<=10;gx+=2){line(px(gx),py(Y0),px(gx),py(Y1),'#eef1f5',1);text(px(gx),py(Y0)+18,gx,'middle',11);}
+    for(let gy=0;gy<=14;gy+=2){line(px(X0),py(gy),px(X1),py(gy),'#eef1f5',1);text(px(X0)-8,py(gy)+4,gy,'end',11);}
+    text(px(5),VH-6,'x（入力）','middle',12,'#1a2332');
+    const yl=document.createElementNS(NS,'text');
+    yl.setAttribute('x',14);yl.setAttribute('y',py(7));yl.setAttribute('text-anchor','middle');
+    yl.setAttribute('font-size',12);yl.setAttribute('fill','#1a2332');
+    yl.setAttribute('transform','rotate(-90 14 '+py(7)+')');
+    yl.textContent='y（出力）';svg.appendChild(yl);
+    for(const d of data){const yp=a+b*d.x;line(px(d.x),py(d.y),px(d.x),py(yp),'#9aa7b5',1.4,'3 3');}
+    line(px(X0),py(a+b*X0),px(X1),py(a+b*X1),'#ff6a2c',3);
+    for(const d of data){
+      const c=document.createElementNS(NS,'circle');
+      c.setAttribute('cx',px(d.x));c.setAttribute('cy',py(d.y));c.setAttribute('r',6);
+      c.setAttribute('fill','#0096c8');c.setAttribute('stroke','#fff');c.setAttribute('stroke-width',1.5);
+      svg.appendChild(c);
+    }
+  }
+
+  function update(){
+    draw();
+    const m=mse();
+    document.getElementById('mse').textContent=m.toFixed(2);
+    document.getElementById('rmse').textContent=Math.sqrt(m).toFixed(2);
+
+  }
+  function syncInputs(){
+    document.getElementById('binput').value=b.toFixed(1);
+    document.getElementById('ainput').value=a.toFixed(1);
+  }
+  function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+
+  document.querySelectorAll('.stepbtn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const p=btn.dataset.p, dir=parseInt(btn.dataset.d,10);
+      if(p==='b') b=clamp(+(b+dir*0.1).toFixed(2),-8,8);
+      else a=clamp(+(a+dir*0.1).toFixed(2),-5,14);
+      syncInputs();update();
+    });
+  });
+  document.getElementById('binput').addEventListener('change',e=>{b=clamp(parseFloat(e.target.value)||0,-8,8);syncInputs();update();});
+  document.getElementById('ainput').addEventListener('change',e=>{a=clamp(parseFloat(e.target.value)||0,-5,14);syncInputs();update();});
+  document.getElementById('newdata').addEventListener('click',()=>{genData();update();});
+  document.getElementById('optimal').addEventListener('click',()=>{
+    const o=ols();
+    const da=(a-o.a), db=(b-o.b);
+    a=+o.a.toFixed(2); b=+o.b.toFixed(2);
+    syncInputs(); update();
+    document.getElementById('hint').innerHTML=
+      '最適解は <b>b='+o.b.toFixed(2)+'</b>, <b>a='+o.a.toFixed(2)+'</b><br>'+
+      'あなたの値とのズレ： 傾き <b>'+(db>=0?'+':'')+db.toFixed(2)+'</b> ， 切片 <b>'+(da>=0?'+':'')+da.toFixed(2)+'</b>';
+  });
+
+  genData();update();
+})();
+</script>
+</body>
+</html>
